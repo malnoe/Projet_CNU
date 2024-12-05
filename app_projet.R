@@ -2,35 +2,101 @@ library(shiny)
 library(bslib)
 library(markdown)
 library(shinyjs)
+library(digest)
 
+users <- data.frame(
+  username = c("user1", "user2"),
+  password = sapply(c("password1", "password2"), digest), # Mots de passe hashés
+  stringsAsFactors = FALSE
+)
 
 ui <- fluidPage(
   shinyjs::useShinyjs(),
   navbarPage(
-  "App projet",
-                 # Page où le rapporteur peut étudier le dossier + émettre son avis.
-                 tabPanel("Avis du rapporteur",
-                          uiOutput("avisPanel")
-                 ),
-                 
-                 # Page contenant les statistiques sur les avis déjà émis.
-                 tabPanel("Statistiques",
-                          sidebarLayout(
-                            sidebarPanel("Bouttons pour la sélection des stats à afficher"),
-                            mainPanel("Graphiques / Informations statistiques liées aux candidatures")
-                          )
-                 ),
-                 
-                 # Page de connexion
-                 tabPanel("Connexion",
-                          card("Widget de connexion / déconnexion avec ID et mot de passe."),
-                          checkboxInput("checkConnecte", label = "Je suis connecté.e")
-                 )
+    "App projet",
+    # Page où le rapporteur peut étudier le dossier + émettre son avis.
+    tabPanel("Avis du rapporteur",
+             uiOutput("avisPanel")
+    ),
+    
+    # Page contenant les statistiques sur les avis déjà émis.
+    tabPanel("Statistiques",
+             sidebarLayout(
+               sidebarPanel("Bouttons pour la sélection des stats à afficher"),
+               mainPanel("Graphiques / Informations statistiques liées aux candidatures")
+             )
+    ),
+    
+    # Page de connexion
+    tabPanel("Connexion",
+             fluidRow(
+               column(4, offset = 4,
+                      uiOutput("authUI"), # Interface conditionnelle
+                      textOutput("login_status") # Message d'erreur ou succès
+               )
+             )
+    )
+  )
 )
-)
+
 server <- function(input, output, session) {
-  # Variable réactive pour l'état de connexion
-  connected <- reactive({ input$checkConnecte })
+  # État de connexion
+  user <- reactiveVal(NULL)  # NULL = pas connecté
+  
+  # Gestion de l'interface de connexion
+  output$authUI <- renderUI({
+    if (is.null(user())) {
+      # Afficher les champs pour se connecter si non connecté
+      tagList(
+        textInput("username", "Nom d'utilisateur"),
+        passwordInput("password", "Mot de passe"),
+        actionButton("login", "Connexion")
+      )
+    } else {
+      # Afficher le bouton de déconnexion si connecté
+      actionButton("logout", "Déconnexion")
+    }
+  })
+  
+  # Gestion du message d'état
+  login_status <- reactiveVal("") # Message réactif
+  
+  output$login_status <- renderText({
+    login_status()
+  })
+  
+  # Gestion de la connexion
+  observeEvent(input$login, {
+    req(input$username, input$password)  # Les champs ne doivent pas être vides
+    
+    # Vérification des identifiants
+    matched_user <- users[users$username == input$username, ]
+    if (nrow(matched_user) == 1 && 
+        digest(input$password) == matched_user$password) {
+      user(input$username)  # Stocker l'utilisateur connecté
+      shinyjs::alert("Connexion réussie !")
+      
+      # Effacer le message d'erreur et réinitialiser les champs
+      login_status("") 
+      updateTextInput(session, "username", value = "")
+      updateTextInput(session, "password", value = "")
+    } else {
+      login_status("Identifiants incorrects")
+      
+      # Effacer le message d'erreur après 3 secondes
+      shinyjs::delay(3000, login_status(""))
+    }
+  })
+  
+  # Gestion de la déconnexion
+  observeEvent(input$logout, {
+    user(NULL)  # Réinitialiser l'état utilisateur
+    shinyjs::alert("Déconnexion réussie !")
+    # Effacer les champs pour éviter les résidus après déconnexion
+    updateTextInput(session, "username", value = "")
+    updateTextInput(session, "password", value = "")
+    login_status("") # Réinitialiser le message d'état
+  })
   
   # Bouton "Terminé"
   observeEvent(input$checkTermine,{
@@ -44,7 +110,7 @@ server <- function(input, output, session) {
   
   # UI Page Avis rapporteur
   output$avisPanel <- renderUI({
-    if (connected()) {
+    if (!is.null(user())) {
       # Boutons et éléments pour l'avis
       sidebarLayout(
         sidebarPanel(
