@@ -12,6 +12,9 @@ users <- data.frame(
 
 ui <- fluidPage(
   shinyjs::useShinyjs(),
+  tags$head(
+    tags$link(rel = "stylesheet", type = "text/css", href = "style_mode.css")
+  ),
   navbarPage(
     "App projet",
     # Page de connexion
