@@ -6,7 +6,7 @@ Application RShiny pour le processus de promotion des maitres de conf et des pro
 - Canva : https://www.canva.com/design/DAGWdLBw7iQ/mI6dxeVINOvL4kdiW2jsjw/edit
   
 # Répartition des tâches
-- Gary : interface graphique, packages CSS
+- Gary : squelette, interface graphique, packages CSS
 - Rassem : Session sécurisée, package de login, auth...
 - Khoi : Pousser les données (fichier CVS), on recrée un autre fichier, ...
 - Yannis : ggplot, statistiques
