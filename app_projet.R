@@ -14,6 +14,15 @@ ui <- fluidPage(
   shinyjs::useShinyjs(),
   navbarPage(
     "App projet",
+    # Page de connexion
+    tabPanel("Connexion",
+             fluidRow(
+               column(4, offset = 4,
+                      uiOutput("authUI"), # Interface conditionnelle
+                      textOutput("login_status") # Message d'erreur ou succès
+               )
+             )
+    ),
     # Page où le rapporteur peut étudier le dossier + émettre son avis.
     tabPanel("Avis du rapporteur",
              uiOutput("avisPanel")
@@ -25,25 +34,17 @@ ui <- fluidPage(
                sidebarPanel("Bouttons pour la sélection des stats à afficher"),
                mainPanel("Graphiques / Informations statistiques liées aux candidatures")
              )
-    ),
-    
-    # Page de connexion
-    tabPanel("Connexion",
-             fluidRow(
-               column(4, offset = 4,
-                      uiOutput("authUI"), # Interface conditionnelle
-                      textOutput("login_status") # Message d'erreur ou succès
-               )
-             )
     )
+    
+    
   )
 )
 
 server <- function(input, output, session) {
-  # État de connexion
+  # Page connexion - État de connexion
   user <- reactiveVal(NULL)  # NULL = pas connecté
   
-  # Gestion de l'interface de connexion
+  # Page connexion - Gestion de l'interface de connexion
   output$authUI <- renderUI({
     if (is.null(user())) {
       # Afficher les champs pour se connecter si non connecté
@@ -58,14 +59,14 @@ server <- function(input, output, session) {
     }
   })
   
-  # Gestion du message d'état
+  # Page connexion - Gestion du message d'état de connexion
   login_status <- reactiveVal("") # Message réactif
   
   output$login_status <- renderText({
     login_status()
   })
   
-  # Gestion de la connexion
+  # Page conenxion - Gestion de la connexion
   observeEvent(input$login, {
     req(input$username, input$password)  # Les champs ne doivent pas être vides
     
@@ -88,7 +89,7 @@ server <- function(input, output, session) {
     }
   })
   
-  # Gestion de la déconnexion
+  # Page connexion - Gestion de la déconnexion
   observeEvent(input$logout, {
     user(NULL)  # Réinitialiser l'état utilisateur
     shinyjs::alert("Déconnexion réussie !")
@@ -98,17 +99,22 @@ server <- function(input, output, session) {
     login_status("") # Réinitialiser le message d'état
   })
   
-  # Bouton "Terminé"
+  # Page Avis rapporteur - Bouton "Terminé"
   observeEvent(input$checkTermine,{
-    if(length(input$checkGroupeModalites)==0 || !(input$selectAvis %in% c("Très favorable", "Favorable", "Réservé"))){
-      alert("Il faut sélectionner des cases")
+    if(!(input$selectAvis %in% c("Très favorable", "Favorable", "Réservé")) #Aucun avis sélectionné
+      ){
+      alert("Merci de sélectionner un avis.")
+    }
+    else if(input$selectAvis %in% c("Très favorable", "Favorable") && length(input$checkGroupeModalites)==0 #Pas de modalité sélectionnée
+            ){
+      alert("Merci de sélectionner des modalités.")
     }
     else{
-      alert("Is ok. Save + marqué comme terminé.")
+      alert("Votre avis a bien été sauvegardé.")
     }
   })
   
-  # UI Page Avis rapporteur
+  # Page Avis rapporteur - UI
   output$avisPanel <- renderUI({
     if (!is.null(user())) {
       # Boutons et éléments pour l'avis
