@@ -2,131 +2,81 @@ library(shiny)
 library(bslib)
 library(markdown)
 library(shinyjs)
-library(digest)
+library(sf)
+library(leaflet)
+library(readxl)
+library(ggmap)
+library(ggplot2)
+library(httr)
+library(jsonlite)
+library(tmaptools)
+library(shinydashboard)
+library(leaflet.extras)
 
-users <- data.frame(
-  username = c("user1", "user2"),
-  password = sapply(c("password1", "password2"), digest), # Mots de passe hashés
-  stringsAsFactors = FALSE
+data <- read_excel("~/Desktop/Projet turoré/RIPEC_202_PR_Anonymous.xlsx")
+
+univ <- unique(data$`Libellé établissement`)
+coord <- matrix(0, nrow = length(univ), ncol = 2)
+occurrences <- integer(length(univ))
+View(data)
+coords_list <- lapply(univ, function(addr) geocode_OSM(addr))
+
+for (i in 1:length(univ)) {
+  if (!is.null(coords_list[[i]]$bbox)) {
+    coord[i, 1] <- as.numeric(coords_list[[i]]$bbox["ymin"])
+    coord[i, 2] <- as.numeric(coords_list[[i]]$bbox["xmin"])
+  } else {
+    coord[i, 1] <- NA
+    coord[i, 2] <- NA
+  }
+  occurrences[i] <- sum(data$`Libellé établissement` == univ[i])
+}
+
+univ_df <- data.frame(
+  Universite = univ,
+  Latitude = coord[, 1],
+  Longitude = coord[, 2],
+  Occurrences = occurrences
 )
 
 ui <- fluidPage(
   shinyjs::useShinyjs(),
-  tags$head(
-    tags$link(rel = "stylesheet", type = "text/css", href = "style_mode.css")
-  ),
   navbarPage(
     "App projet",
-    # Page de connexion
-    tabPanel("Connexion",
-             fluidRow(
-               column(4, offset = 4,
-                      uiOutput("authUI"), # Interface conditionnelle
-                      textOutput("login_status") # Message d'erreur ou succès
-               )
-             )
-    ),
-    # Page où le rapporteur peut étudier le dossier + émettre son avis.
     tabPanel("Avis du rapporteur",
              uiOutput("avisPanel")
     ),
-    
-    # Page contenant les statistiques sur les avis déjà émis.
     tabPanel("Statistiques",
-             sidebarLayout(
-               sidebarPanel("Bouttons pour la sélection des stats à afficher"),
-               mainPanel("Graphiques / Informations statistiques liées aux candidatures")
-             )
+             leafletOutput("map"),
+             column(6,
+                    leafletOutput("map2", height = "400px")
+    ),
+    tabPanel("Connexion",
+             card("Widget de connexion / déconnexion avec ID et mot de passe."),
+             checkboxInput("checkConnecte", label = "Je suis connecté.e")
     )
-    
-    
   )
-)
+))
 
 server <- function(input, output, session) {
-  # Page connexion - État de connexion
-  user <- reactiveVal(NULL)  # NULL = pas connecté
+  connected <- reactive({ input$checkConnecte })
   
-  # Page connexion - Gestion de l'interface de connexion
-  output$authUI <- renderUI({
-    if (is.null(user())) {
-      # Afficher les champs pour se connecter si non connecté
-      tagList(
-        textInput("username", "Nom d'utilisateur"),
-        passwordInput("password", "Mot de passe"),
-        actionButton("login", "Connexion")
-      )
+  observeEvent(input$checkTermine, {
+    if (length(input$checkGroupeModalites) == 0 || !(input$selectAvis %in% c("Très favorable", "Favorable", "Réservé"))) {
+      alert("Il faut sélectionner des cases")
     } else {
-      # Afficher le bouton de déconnexion si connecté
-      actionButton("logout", "Déconnexion")
+      alert("Is ok. Save + marqué comme terminé.")
     }
   })
   
-  # Page connexion - Gestion du message d'état de connexion
-  login_status <- reactiveVal("") # Message réactif
-  
-  output$login_status <- renderText({
-    login_status()
-  })
-  
-  # Page conenxion - Gestion de la connexion
-  observeEvent(input$login, {
-    req(input$username, input$password)  # Les champs ne doivent pas être vides
-    
-    # Vérification des identifiants
-    matched_user <- users[users$username == input$username, ]
-    if (nrow(matched_user) == 1 && 
-        digest(input$password) == matched_user$password) {
-      user(input$username)  # Stocker l'utilisateur connecté
-      shinyjs::alert("Connexion réussie !")
-      
-      # Effacer le message d'erreur et réinitialiser les champs
-      login_status("") 
-      updateTextInput(session, "username", value = "")
-      updateTextInput(session, "password", value = "")
-    } else {
-      login_status("Identifiants incorrects")
-      
-      # Effacer le message d'erreur après 3 secondes
-      shinyjs::delay(3000, login_status(""))
-    }
-  })
-  
-  # Page connexion - Gestion de la déconnexion
-  observeEvent(input$logout, {
-    user(NULL)  # Réinitialiser l'état utilisateur
-    shinyjs::alert("Déconnexion réussie !")
-    # Effacer les champs pour éviter les résidus après déconnexion
-    updateTextInput(session, "username", value = "")
-    updateTextInput(session, "password", value = "")
-    login_status("") # Réinitialiser le message d'état
-  })
-  
-  # Page Avis rapporteur - Bouton "Terminé"
-  observeEvent(input$checkTermine,{
-    if(!(input$selectAvis %in% c("Très favorable", "Favorable", "Réservé")) #Aucun avis sélectionné
-      ){
-      alert("Merci de sélectionner un avis.")
-    }
-    else if(input$selectAvis %in% c("Très favorable", "Favorable") && length(input$checkGroupeModalites)==0 #Pas de modalité sélectionnée
-            ){
-      alert("Merci de sélectionner des modalités.")
-    }
-    else{
-      alert("Votre avis a bien été sauvegardé.")
-    }
-  })
-  
-  # Page Avis rapporteur - UI
   output$avisPanel <- renderUI({
-    if (!is.null(user())) {
-      # Boutons et éléments pour l'avis
+    if (connected()) {
       sidebarLayout(
         sidebarPanel(
           actionButton("buttonMenu", label = "Menu"),
           actionButton("buttonSave", label = "Sauvegarder"),
           actionButton("checkTermine", label = "J'ai terminé"),
-          selectInput("selectAvis", label = "Avis", choices = list("","Très favorable", "Favorable", "Réservé"), selected = NULL),
+          selectInput("selectAvis", label = "Avis", choices = list("", "Très favorable", "Favorable", "Réservé"), selected = NULL),
           checkboxGroupInput(
             "checkGroupeModalites",
             "Modalités d'attribution",
@@ -140,10 +90,47 @@ server <- function(input, output, session) {
         )
       )
     } else {
-      # Message de non-connexion
       mainPanel("Vous n'êtes pas connecté. Connectez-vous pour accéder à cette page.")
     }
   })
-}
+  
+  output$map <- renderLeaflet({
+    leaflet(univ_df) %>%
+      addTiles() %>%
+      setView(lng = 2.5, lat = 46.5, zoom = 6) %>%
+      setMaxBounds(
+        lng1 = -5.142222, lat1 = 41.333740,
+        lng2 = 9.561556, lat2 = 51.124199
+      ) %>%
+      addCircleMarkers(
+        lng = ~Longitude,
+        lat = ~Latitude,
+        radius = ~sqrt(Occurrences) * 5,
+        color = "red",
+        fillOpacity = 0.5,
+        popup = ~paste(Universite, "<br>", "Nombres de chercheurs ", Occurrences),
+        label = ~paste(Occurrences)
+      )
+  })
 
+
+output$map2 <- renderLeaflet({
+  leaflet(univ_df) %>%
+    addTiles() %>%
+    setView(lng = 10, lat = 14.5, zoom = 7) %>%
+    setMaxBounds(
+      lng1 = 10, lat1 = 19,
+      lng2 = -65, lat2 = -60
+    ) %>%
+    addCircleMarkers(
+      lng = ~Longitude,
+      lat = ~Latitude,
+      radius = ~sqrt(Occurrences) * 5,
+      color = "red",
+      fillOpacity = 0.5,
+      popup = ~paste(Universite, "<br>", "Nombres de chercheurs ", Occurrences),
+      label = ~paste(Occurrences)
+    )
+})
+}
 shinyApp(ui = ui, server = server)
